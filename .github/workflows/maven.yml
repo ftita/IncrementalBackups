@@ -1,0 +1,60 @@
+name: Build and Deploy
+ 
+on:
+  schedule:
+    - cron: '0 5 * * 0'
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+ 
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+ 
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+ 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+ 
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+ 
+      - name: Build with Maven
+        run: mvn -B package --no-transfer-progress
+ 
+      - name: Set tag name
+        id: set_tag
+        run: |
+          DATE=$(date +'%y%m%d-%H%M')
+          echo "TAG_NAME=build-$DATE" >> $GITHUB_ENV
+ 
+      - name: Verify Artifact
+        run: |
+          ls -la ./target/
+          if ! ls ./target/IncrementalBackup-*.jar 2>/dev/null; then
+            echo "::error::IncrementalBackup-*.jar not found in target/"
+            exit 1
+          fi
+          echo "JAR found successfully"
+ 
+      - name: Auto Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          automatic_release_tag: ${{ env.TAG_NAME }}
+          prerelease: false
+          files: ./target/IncrementalBackup-*.jar
+ 
